@@ -1,28 +1,35 @@
 name: Monitor Kubernetes Costs
-
 on:
   schedule:
-    - cron: '0 0 * * *'  # Daily
-
+    - cron: '0 0 * * *'  # Daily at midnight UTC
 jobs:
   check-metrics:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Install deps
-      run: sudo apt-get update && sudo apt-get install -y curl jq
-
-    - name: Run metric check
-      env:
-        API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
-        PROJECT_ID: ${{ secrets.SCALEWAY_PROJECT_ID }}
-        CLUSTER_NAME: my-cluster
-      run: ./scripts/check-metrics.sh $API_KEY $PROJECT_ID $CLUSTER_NAME
-
-    - name: Notify Slack
-      uses: slackapi/slack-github-action@v1.24
-      with:
-        slack-bot-token: ${{ secrets.SLACK_TOKEN }}
-        channel-id: cost-alerts
-        text: 'Cost metrics checked for cluster'
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y curl jq
+      - name: Run metric check
+        id: check-metrics
+        env:
+          API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+          PROJECT_ID: ${{ secrets.SCALEWAY_PROJECT_ID }}
+          CLUSTER_NAME: my-cluster
+        run: |
+          OUTPUT=$(./scripts/check-metrics.sh $API_KEY $PROJECT_ID $CLUSTER_NAME)
+          echo "$OUTPUT"
+          echo "cpu=$(echo "$OUTPUT" | grep "Cluster CPU usage" | cut -d' ' -f4 | tr -d '%')" >> $GITHUB_OUTPUT
+          echo "triggeriq_cpu=$(echo "$OUTPUT" | grep "triggeriq CPU" | cut -d' ' -f3)" >> $GITHUB_OUTPUT
+          echo "watchers=$(echo "$OUTPUT" | grep "ingress-nginx etcd watchers" | cut -d' ' -f4)" >> $GITHUB_OUTPUT
+          echo "http_rate=$(echo "$OUTPUT" | grep "triggeriq HTTP rate" | cut -d' ' -f4)" >> $GITHUB_OUTPUT
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.24
+        with:
+          slack-bot-token: ${{ secrets.SLACK_TOKEN }}
+          channel-id: cost-alerts
+          text: |
+            Daily Cost Check for $CLUSTER_NAME:
+            Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}%
+            triggeriq CPU: ${{ steps.check-metrics.outputs.triggeriq_cpu }} mCPU
+            ingress-nginx Watchers: ${{ steps.check-metrics.outputs.watchers }}
+            triggeriq HTTP Rate: ${{ steps.check-metrics.outputs.http_rate }} req/s
