@@ -1,0 +1,23 @@
+name: Monitor Kubernetes Costs
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily
+jobs:
+  check-metrics:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install deps
+      run: sudo apt-get update && sudo apt-get install -y curl jq
+    - name: Run metric check
+      env:
+        API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+        PROJECT_ID: ${{ secrets.SCALEWAY_PROJECT_ID }}
+        CLUSTER_NAME: my-cluster
+      run: ./scripts/check-metrics.sh $API_KEY $PROJECT_ID $CLUSTER_NAME
+    - name: Notify Slack
+      uses: slackapi/slack-github-action@v1.24
+      with:
+        slack-bot-token: ${{ secrets.SLACK_TOKEN }}
+        channel-id: cost-alerts
+        text: 'Cost metrics checked for cluster'
