@@ -21,10 +21,10 @@ jobs:
       run: |
         OUTPUT=$(./scripts/check-metrics.sh $API_KEY $PROJECT_ID $CLUSTER_NAME)
         echo "$OUTPUT"
-        echo "cpu=$(echo "$OUTPUT" | grep "Cluster CPU usage" | cut -d' ' -f4 | tr -d '%')" >> $GITHUB_OUTPUT
-        echo "triggeriq_cpu=$(echo "$OUTPUT" | grep "triggeriq CPU" | cut -d' ' -f3)" >> $GITHUB_OUTPUT
-        echo "watchers=$(echo "$OUTPUT" | grep "ingress-nginx etcd watchers" | cut -d' ' -f4)" >> $GITHUB_OUTPUT
-        echo "http_rate=$(echo "$OUTPUT" | grep "triggeriq HTTP rate" | cut -d' ' -f4)" >> $GITHUB_OUTPUT
+        echo "cpu=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | awk '{print $NF}' | tr -d '%')" >> $GITHUB_OUTPUT
+        echo "triggeriq_cpu=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | awk '{print $3}')" >> $GITHUB_OUTPUT
+        echo "watchers=$(echo "$OUTPUT" | grep -E "ingress-nginx etcd watchers|ERROR.*etcd watchers" | tail -1 | awk '{print $4}')" >> $GITHUB_OUTPUT
+        echo "http_rate=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | awk '{print $4}')" >> $GITHUB_OUTPUT
     - name: Notify Slack
       uses: slackapi/slack-github-action@v1.24
       with:
@@ -32,7 +32,7 @@ jobs:
         channel-id: D09GZCRDRNE
         text: |
           Daily Cost Check for $CLUSTER_NAME:
-          Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}%
-          triggeriq CPU: ${{ steps.check-metrics.outputs.triggeriq_cpu }} mCPU
+          Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}
+          triggeriq CPU: ${{ steps.check-metrics.outputs.triggeriq_cpu }}
           ingress-nginx Watchers: ${{ steps.check-metrics.outputs.watchers }}
-          triggeriq HTTP Rate: ${{ steps.check-metrics.outputs.http_rate }} req/s
+          triggeriq HTTP Rate: ${{ steps.check-metrics.outputs.http_rate }}
