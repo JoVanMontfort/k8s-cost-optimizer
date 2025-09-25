@@ -22,7 +22,11 @@ query_api() {
   if [ $status -ne 0 ]; then
     echo "ERROR: curl failed with status $status - check network or endpoint ($API_ENDPOINT)" >&2
     echo "null"
-  elif echo "$response" | grep -q 'HTTP/1.1 404 Not Found\|HTTP/2 404'; then
+  elif echo "$response" | grep -q 'HTTP/1.1 400\|HTTP/2 400'; then
+    echo "ERROR: API returned 400 - check query syntax: $query" >&2
+    echo "DEBUG: Full response with headers: $response" >&2
+    echo "null"
+  elif echo "$response" | grep -q 'HTTP/1.1 404\|HTTP/2 404'; then
     echo "ERROR: API returned 404 - check metric name, Cockpit setup, or data source ID ($DATA_SOURCE_ID)" >&2
     echo "DEBUG: Full response with headers: $response" >&2
     echo "null"
@@ -34,7 +38,7 @@ query_api() {
 }
 
 # Cluster-wide CPU usage
-CPU=$(query_api "100 * (kubernetes_cluster_k8s_shoot_nodes_cpu_usage_total{resource_name=~\\\"${CLUSTER_NAME}\\\"} / kubernetes_cluster_k8s_shoot_nodes_cpu_capacity_total{resource_name=~\\\"${CLUSTER_NAME}\\\"})")
+CPU=$(query_api "100 * (kubernetes_cluster_k8s_shoot_nodes_cpu_usage_total{resource_name=~'$CLUSTER_NAME'} / kubernetes_cluster_k8s_shoot_nodes_cpu_capacity_total{resource_name=~'$CLUSTER_NAME'})")
 if [ "$CPU" = "null" ]; then
   echo "ERROR: Failed to fetch cluster CPU usage - check COCKPIT_TOKEN, DATA_SOURCE_ID, or Cockpit setup"
 else
@@ -46,7 +50,7 @@ else
 fi
 
 # triggeriq pod CPU
-TRIGGERIQ_CPU=$(query_api "sum(rate(container_cpu_usage_seconds_total{namespace=\\\"ingress-nginx\\\",pod=~\\\"triggeriq-.*\\\"}[5m])) * 1000")
+TRIGGERIQ_CPU=$(query_api "sum(rate(container_cpu_usage_seconds_total{namespace='ingress-nginx',pod=~'triggeriq-.*'}[5m])) * 1000")
 if [ "$TRIGGERIQ_CPU" = "null" ]; then
   echo "ERROR: Failed to fetch triggeriq CPU - check Metrics Server or pod namespace"
 else
@@ -57,8 +61,8 @@ else
   fi
 fi
 
-# Node count (instead of etcd watchers, as equivalent metric may not exist)
-NODE_COUNT=$(query_api "kubernetes_cluster_k8s_shoot_nodes_ready{resource_name=~\\\"${CLUSTER_NAME}\\\"}")
+# Node count
+NODE_COUNT=$(query_api "kubernetes_cluster_k8s_shoot_nodes_ready{resource_name=~'$CLUSTER_NAME'}")
 if [ "$NODE_COUNT" = "null" ]; then
   echo "ERROR: Failed to fetch node count - check Cockpit metrics"
 else
@@ -66,7 +70,7 @@ else
 fi
 
 # HTTP requests (Prometheus-enabled)
-HTTP_RATE=$(query_api "sum(rate(http_requests_total{namespace=\\\"ingress-nginx\\\",job=~\\\"triggeriq.*\\\"}[5m]))")
+HTTP_RATE=$(query_api "sum(rate(http_requests_total{namespace='ingress-nginx',job=~'triggeriq.*'}[5m]))")
 if [ "$HTTP_RATE" = "null" ]; then
   echo "ERROR: Failed to fetch HTTP rate - check triggeriq Prometheus endpoint (/metrics)"
 else
