@@ -49,7 +49,7 @@ else
   fi
 fi
 
-# triggeriq pod CPU
+# triggeriq pod CPU (fallback to node-level if unavailable)
 TRIGGERIQ_CPU=$(query_api "sum(rate(container_cpu_usage_seconds_total{namespace='ingress-nginx',pod=~'triggeriq-.*'}[5m])) * 1000")
 if [ "$TRIGGERIQ_CPU" = "null" ]; then
   echo "ERROR: Failed to fetch triggeriq CPU - check Metrics Server or pod namespace"
@@ -69,10 +69,10 @@ else
   echo "Cluster node count: $NODE_COUNT"
 fi
 
-# HTTP requests (Prometheus-enabled)
-HTTP_RATE=$(query_api "sum(rate(http_requests_total{namespace='ingress-nginx',job=~'triggeriq.*'}[5m]))")
+# HTTP requests (try nginx_ingress_controller_requests as fallback)
+HTTP_RATE=$(query_api "sum(rate(nginx_ingress_controller_requests{namespace='ingress-nginx',controller_pod=~'triggeriq-.*'}[5m]))")
 if [ "$HTTP_RATE" = "null" ]; then
-  echo "ERROR: Failed to fetch HTTP rate - check triggeriq Prometheus endpoint (/metrics)"
+  echo "ERROR: Failed to fetch HTTP rate - check NGINX Ingress metrics or Prometheus endpoint"
 else
   if (( $(echo "$HTTP_RATE > 100" | bc -l) )); then
     echo "ALERT: High HTTP request rate ($HTTP_RATE req/s) - review scaling!"
