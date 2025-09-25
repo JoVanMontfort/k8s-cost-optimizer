@@ -11,33 +11,94 @@ jobs:
     - name: Ensure script permissions
       run: chmod +x scripts/check-metrics.sh
     - name: Install deps
-      run: sudo apt-get update && sudo apt-get install -y curl jq python3
+      run: sudo apt-get update && sudo apt-get install -y curl jq bc
     - name: Run metric check
       id: check-metrics
       env:
         COCKPIT_TOKEN: ${{ secrets.COCKPIT_TOKEN }}
-        DATA_SOURCE_ID: <data-source-id>  # Replace with actual ID
+        DATA_SOURCE_ID: d2967af6-7cae-4d15-bcf6-d128c3c2f81b  # Your actual data source ID
         CLUSTER_NAME: k8s-triggeriq-fe-cluster
       run: |
-        OUTPUT=$(./scripts/check-metrics.sh $COCKPIT_TOKEN $DATA_SOURCE_ID $CLUSTER_NAME)
+        OUTPUT=$(./scripts/check-metrics.sh "$COCKPIT_TOKEN" "$DATA_SOURCE_ID" "$CLUSTER_NAME")
         echo "$OUTPUT"
-        CPU=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
-        TRIGGERIQ_CPU=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | grep -o '[0-9.]* mCPU' | awk '{print $1}' || echo "unknown")
-        NODE_COUNT=$(echo "$OUTPUT" | grep -E "Cluster node count|ERROR.*node count" | tail -1 | grep -o '[0-9]*$' || echo "unknown")
-        HTTP_RATE=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | grep -o '[0-9.]* req/s' | awk '{print $1}' || echo "unknown")
+        
+        # Extract metrics from the new script output
+        CPU=$(echo "$OUTPUT" | grep "Cluster CPU usage:" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        if [ "$CPU" = "unknown" ]; then
+          CPU=$(echo "$OUTPUT" | grep "ALERT: Cluster CPU" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        fi
+        
+        MEMORY=$(echo "$OUTPUT" | grep "Memory usage:" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        NODE_COUNT=$(echo "$OUTPUT" | grep "Cluster node count:" | awk '{print $NF}' || echo "unknown")
+        POD_USAGE=$(echo "$OUTPUT" | grep "Pod capacity usage:" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        CONTROLPLANE=$(echo "$OUTPUT" | grep "Control plane:" | awk '{print $NF}' || echo "unknown")
+        INSTANCE_CPU=$(echo "$OUTPUT" | grep "Instance CPU" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        
         echo "cpu=$CPU" >> $GITHUB_OUTPUT
-        echo "triggeriq_cpu=$TRIGGERIQ_CPU" >> $GITHUB_OUTPUT
+        echo "memory=$MEMORY" >> $GITHUB_OUTPUT
         echo "node_count=$NODE_COUNT" >> $GITHUB_OUTPUT
-        echo "http_rate=$HTTP_RATE" >> $GITHUB_OUTPUT
+        echo "pod_usage=$POD_USAGE" >> $GITHUB_OUTPUT
+        echo "controlplane=$CONTROLPLANE" >> $GITHUB_OUTPUT
+        echo "instance_cpu=$INSTANCE_CPU" >> $GITHUB_OUTPUT
+        
+        # Save summary for Slack
+        echo "SUMMARY=$(echo "$OUTPUT" | grep '^SUMMARY:' | cut -d: -f2-)" >> $GITHUB_ENV
     - name: Notify Slack
       uses: slackapi/slack-github-action@v2.1.1
       env:
         CLUSTER_NAME: k8s-triggeriq-fe-cluster
       with:
         method: chat.postMessage
-        token: ${{ secrets.SLACK_TOKEN }}
+        token: ${{ secrets.SLACK_BOT_TOKEN }}  # Use correct secret name
         payload: |
           {
             "channel": "D09GZCRDRNE",
-            "text": "Daily Cost Check for *${CLUSTER_NAME}*:\n*Cluster CPU*: ${{ steps.check-metrics.outputs.cpu }}%\n*triggeriq CPU*: ${{ steps.check-metrics.outputs.triggeriq_cpu }} mCPU (Metrics Server required)\n*Node Count*: ${{ steps.check-metrics.outputs.node_count }}\n*triggeriq HTTP Rate*: ${{ steps.check-metrics.outputs.http_rate }} req/s (NGINX metrics required)"
+            "text": "Daily Cost Check for *${CLUSTER_NAME}*:\n*Cluster CPU*: ${{ steps.check-metrics.outputs.cpu }}%\n*Memory Usage*: ${{ steps.check-metrics.outputs.memory }}%\n*Node Count*: ${{ steps.check-metrics.outputs.node_count }}\n*Pod Capacity*: ${{ steps.check-metrics.outputs.pod_usage }}%\n*Control Plane*: ${{ steps.check-metrics.outputs.controlplane }}\n*Instance CPU*: ${{ steps.check-metrics.outputs.instance_cpu }}%\n\n_Note: Container-level metrics require Metrics Server deployment_",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "📊 *Daily Cost Check for ${CLUSTER_NAME}*"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Cluster CPU:*\n${{ steps.check-metrics.outputs.cpu }}%"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Memory Usage:*\n${{ steps.check-metrics.outputs.memory }}%"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Node Count:*\n${{ steps.check-metrics.outputs.node_count }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Pod Capacity:*\n${{ steps.check-metrics.outputs.pod_usage }}%"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Control Plane:*\n${{ steps.check-metrics.outputs.controlplane }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Instance CPU:*\n${{ steps.check-metrics.outputs.instance_cpu }}%"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "_Note: Container-level metrics require Metrics Server deployment_"
+                  }
+                ]
+              }
+            ]
           }
