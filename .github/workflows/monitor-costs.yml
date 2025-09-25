@@ -16,21 +16,23 @@ jobs:
       id: check-metrics
       env:
         COCKPIT_TOKEN: ${{ secrets.COCKPIT_TOKEN }}
-        DATA_SOURCE_ID: ${{ secrets.DATA_SOURCE_ID }}
+        DATA_SOURCE_ID: <data-source-id>  # Replace with actual ID
         CLUSTER_NAME: k8s-triggeriq-fe-cluster
       run: |
         OUTPUT=$(./scripts/check-metrics.sh $COCKPIT_TOKEN $DATA_SOURCE_ID $CLUSTER_NAME)
         echo "$OUTPUT"
-        CPU=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | awk '{print $NF}' | tr -d '%')
-        TRIGGERIQ_CPU=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | awk '{print $3}')
-        NODE_COUNT=$(echo "$OUTPUT" | grep -E "Cluster node count|ERROR.*node count" | tail -1 | awk '{print $4}')
-        HTTP_RATE=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | awk '{print $4}')
-        echo "cpu=${CPU:-unknown}" >> $GITHUB_OUTPUT
-        echo "triggeriq_cpu=${TRIGGERIQ_CPU:-unknown}" >> $GITHUB_OUTPUT
-        echo "node_count=${NODE_COUNT:-unknown}" >> $GITHUB_OUTPUT
-        echo "http_rate=${HTTP_RATE:-unknown}" >> $GITHUB_OUTPUT
+        CPU=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        TRIGGERIQ_CPU=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | grep -o '[0-9.]* mCPU' | awk '{print $1}' || echo "unknown")
+        NODE_COUNT=$(echo "$OUTPUT" | grep -E "Cluster node count|ERROR.*node count" | tail -1 | grep -o '[0-9]*$' || echo "unknown")
+        HTTP_RATE=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | grep -o '[0-9.]* req/s' | awk '{print $1}' || echo "unknown")
+        echo "cpu=$CPU" >> $GITHUB_OUTPUT
+        echo "triggeriq_cpu=$TRIGGERIQ_CPU" >> $GITHUB_OUTPUT
+        echo "node_count=$NODE_COUNT" >> $GITHUB_OUTPUT
+        echo "http_rate=$HTTP_RATE" >> $GITHUB_OUTPUT
     - name: Notify Slack
       uses: slackapi/slack-github-action@v2.1.1
+      env:
+        CLUSTER_NAME: k8s-triggeriq-fe-cluster
       with:
         method: chat.postMessage
         token: ${{ secrets.SLACK_TOKEN }}
