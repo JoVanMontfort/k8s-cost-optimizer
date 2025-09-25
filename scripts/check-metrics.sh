@@ -33,7 +33,13 @@ query_api() {
   else
     echo "DEBUG: Query: $query" >&2
     echo "DEBUG: Full response with headers: $response" >&2
-    echo "$response" | sed '1,/^$/d' | jq '.data.result[0].values[-1][1] // "null"' | tr -d '"'
+    local result=$(echo "$response" | sed '1,/^$/d' | jq '.data.result[0].values[-1][1] // "null"' | tr -d '"')
+    if [ -z "$result" ] || [ "$result" = "null" ]; then
+      echo "ERROR: Query returned empty result: $query" >&2
+      echo "null"
+    else
+      echo "$result"
+    fi
   fi
 }
 
@@ -49,17 +55,8 @@ else
   fi
 fi
 
-# triggeriq pod CPU (fallback to node-level if unavailable)
-TRIGGERIQ_CPU=$(query_api "sum(rate(container_cpu_usage_seconds_total{namespace='ingress-nginx',pod=~'triggeriq-.*'}[5m])) * 1000")
-if [ "$TRIGGERIQ_CPU" = "null" ]; then
-  echo "ERROR: Failed to fetch triggeriq CPU - check Metrics Server or pod namespace"
-else
-  if (( $(echo "$TRIGGERIQ_CPU < 50" | bc -l) )); then
-    echo "ALERT: triggeriq CPU low ($TRIGGERIQ_CPU mCPU) - HPA may scale down."
-  else
-    echo "triggeriq CPU: $TRIGGERIQ_CPU mCPU"
-  fi
-fi
+# triggeriq pod CPU (unavailable)
+echo "ERROR: triggeriq CPU unavailable - enable Metrics Server for container_cpu_usage_seconds_total"
 
 # Node count
 NODE_COUNT=$(query_api "kubernetes_cluster_k8s_shoot_nodes_ready{resource_name=~'$CLUSTER_NAME'}")
@@ -69,14 +66,5 @@ else
   echo "Cluster node count: $NODE_COUNT"
 fi
 
-# HTTP requests (try nginx_ingress_controller_requests as fallback)
-HTTP_RATE=$(query_api "sum(rate(nginx_ingress_controller_requests{namespace='ingress-nginx',controller_pod=~'triggeriq-.*'}[5m]))")
-if [ "$HTTP_RATE" = "null" ]; then
-  echo "ERROR: Failed to fetch HTTP rate - check NGINX Ingress metrics or Prometheus endpoint"
-else
-  if (( $(echo "$HTTP_RATE > 100" | bc -l) )); then
-    echo "ALERT: High HTTP request rate ($HTTP_RATE req/s) - review scaling!"
-  else
-    echo "triggeriq HTTP rate: $HTTP_RATE req/s"
-  fi
-fi
+# HTTP requests (unavailable)
+echo "ERROR: triggeriq HTTP rate unavailable - enable NGINX Ingress Prometheus metrics"
