@@ -26,78 +26,39 @@ jobs:
         CPU=$(echo "$OUTPUT" | grep -E "Cluster CPU usage:|ALERT: Cluster CPU" | grep -o '[0-9.]*%' | head -1 | tr -d '%' || echo "unknown")
         MEMORY=$(echo "$OUTPUT" | grep "Memory usage:" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
         NODE_COUNT=$(echo "$OUTPUT" | grep "Cluster node count:" | grep -o '[0-9]*' || echo "unknown")
-        POD_USAGE=$(echo "$OUTPUT" | grep "Pod capacity usage:" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
         CONTROLPLANE=$(echo "$OUTPUT" | grep "Control plane:" | awk '{print $NF}' || echo "unknown")
         INSTANCE_CPU=$(echo "$OUTPUT" | grep "Instance CPU" | grep -o '[0-9.]*%' | tr -d '%' || echo "unknown")
+        
+        # Determine CPU status
+        if [ "$CPU" != "unknown" ] && [ $(echo "$CPU < 20" | bc -l) -eq 1 ]; then
+          CPU_STATUS="🚨 LOW - consider downsizing!"
+        else
+          CPU_STATUS="✅ Healthy"
+        fi
         
         # Debug extracted values
         echo "Extracted values:"
         echo "CPU: $CPU"
         echo "Memory: $MEMORY"
         echo "Node Count: $NODE_COUNT"
-        echo "Pod Usage: $POD_USAGE"
         echo "Control Plane: $CONTROLPLANE"
         echo "Instance CPU: $INSTANCE_CPU"
+        echo "CPU Status: $CPU_STATUS"
         
         # Set outputs
         echo "cpu=$CPU" >> $GITHUB_OUTPUT
         echo "memory=$MEMORY" >> $GITHUB_OUTPUT
         echo "node_count=$NODE_COUNT" >> $GITHUB_OUTPUT
-        echo "pod_usage=$POD_USAGE" >> $GITHUB_OUTPUT
         echo "controlplane=$CONTROLPLANE" >> $GITHUB_OUTPUT
         echo "instance_cpu=$INSTANCE_CPU" >> $GITHUB_OUTPUT
+        echo "cpu_status=$CPU_STATUS" >> $GITHUB_OUTPUT
     - name: Notify Slack
       uses: slackapi/slack-github-action@v2.1.1
-      env:
-        CLUSTER_NAME: k8s-triggeriq-fe-cluster
       with:
         method: chat.postMessage
-        token: ${{ secrets.SLACK_TOKEN }}
+        token: ${{ secrets.SLACK_BOT_TOKEN }}
         payload: |
           {
             "channel": "D09GZCRDRNE",
-            "text": "📊 Daily Cost Check for *${CLUSTER_NAME}*:\n• Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}% ${{ steps.check-metrics.outputs.cpu < 20 && '🚨 (LOW - consider downsizing!)' || '✅' }}\n• Memory Usage: ${{ steps.check-metrics.outputs.memory }}%\n• Node Count: ${{ steps.check-metrics.outputs.node_count }}\n• Control Plane: ${{ steps.check-metrics.outputs.controlplane }}\n• Instance CPU (avg): ${{ steps.check-metrics.outputs.instance_cpu }}%",
-            "blocks": [
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "📊 *Daily Cost Check for ${CLUSTER_NAME}*"
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Cluster CPU:*\n${{ steps.check-metrics.outputs.cpu }}% ${{ steps.check-metrics.outputs.cpu < 20 && '🚨' : '✅' }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Memory Usage:*\n${{ steps.check-metrics.outputs.memory }}%"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Node Count:*\n${{ steps.check-metrics.outputs.node_count }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Control Plane:*\n${{ steps.check-metrics.outputs.controlplane }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Instance CPU:*\n${{ steps.check-metrics.outputs.instance_cpu }}%"
-                  }
-                ]
-              },
-              {
-                "type": "context",
-                "elements": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "🚨 Cluster CPU usage is low (${{ steps.check-metrics.outputs.cpu }}%) - consider downsizing nodes to save costs"
-                  }
-                ]
-              }
-            ]
+            "text": "📊 Daily Cost Check for k8s-triggeriq-fe-cluster:\n• Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}% - ${{ steps.check-metrics.outputs.cpu_status }}\n• Memory Usage: ${{ steps.check-metrics.outputs.memory }}%\n• Node Count: ${{ steps.check-metrics.outputs.node_count }}\n• Control Plane: ${{ steps.check-metrics.outputs.controlplane }}\n• Instance CPU (avg): ${{ steps.check-metrics.outputs.instance_cpu }}%"
           }
