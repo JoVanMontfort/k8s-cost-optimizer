@@ -49,7 +49,7 @@ jobs:
         CLUSTER_NAME: k8s-triggeriq-fe-cluster
       with:
         method: chat.postMessage
-        token: ${{ secrets.SLACK_BOT_TOKEN }}  # Use correct secret name
+        token: ${{ secrets.SLACK_TOKEN }}  # Use correct secret name
         payload: |
           {
             "channel": "D09GZCRDRNE",
