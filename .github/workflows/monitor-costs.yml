@@ -30,13 +30,12 @@ jobs:
         echo "node_count=${NODE_COUNT:-unknown}" >> $GITHUB_OUTPUT
         echo "http_rate=${HTTP_RATE:-unknown}" >> $GITHUB_OUTPUT
     - name: Notify Slack
-      uses: slackapi/slack-github-action@v1.24
+      uses: slackapi/slack-github-action@v2.1.1
       with:
-        slack-bot-token: ${{ secrets.SLACK_TOKEN }}
-        channel-id: D09GZCRDRNE
-        slack-message: |
-          Daily Cost Check for $CLUSTER_NAME:
-          Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}
-          triggeriq CPU: ${{ steps.check-metrics.outputs.triggeriq_cpu }}
-          Node Count: ${{ steps.check-metrics.outputs.node_count }}
-          triggeriq HTTP Rate: ${{ steps.check-metrics.outputs.http_rate }}
+        method: chat.postMessage
+        token: ${{ secrets.SLACK_TOKEN }}
+        payload: |
+          {
+            "channel": "D09GZCRDRNE",
+            "text": "Daily Cost Check for *${CLUSTER_NAME}*:\n*Cluster CPU*: ${{ steps.check-metrics.outputs.cpu }}%\n*triggeriq CPU*: ${{ steps.check-metrics.outputs.triggeriq_cpu }} mCPU\n*Node Count*: ${{ steps.check-metrics.outputs.node_count }}\n*triggeriq HTTP Rate*: ${{ steps.check-metrics.outputs.http_rate }} req/s"
+          }
