@@ -11,28 +11,32 @@ jobs:
     - name: Ensure script permissions
       run: chmod +x scripts/check-metrics.sh
     - name: Install deps
-      run: sudo apt-get update && sudo apt-get install -y curl jq
+      run: sudo apt-get update && sudo apt-get install -y curl jq python3
     - name: Run metric check
       id: check-metrics
       env:
-        API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
-        PROJECT_ID: ${{ secrets.SCALEWAY_PROJECT_ID }}
+        COCKPIT_TOKEN: ${{ secrets.COCKPIT_TOKEN }}
+        DATA_SOURCE_ID: ${{ secrets.DATA_SOURCE_ID }}
         CLUSTER_NAME: k8s-triggeriq-fe-cluster
       run: |
-        OUTPUT=$(./scripts/check-metrics.sh $API_KEY $PROJECT_ID $CLUSTER_NAME)
+        OUTPUT=$(./scripts/check-metrics.sh $COCKPIT_TOKEN $DATA_SOURCE_ID $CLUSTER_NAME)
         echo "$OUTPUT"
-        echo "cpu=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | awk '{print $NF}' | tr -d '%')" >> $GITHUB_OUTPUT
-        echo "triggeriq_cpu=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | awk '{print $3}')" >> $GITHUB_OUTPUT
-        echo "watchers=$(echo "$OUTPUT" | grep -E "ingress-nginx etcd watchers|ERROR.*etcd watchers" | tail -1 | awk '{print $4}')" >> $GITHUB_OUTPUT
-        echo "http_rate=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | awk '{print $4}')" >> $GITHUB_OUTPUT
+        CPU=$(echo "$OUTPUT" | grep -E "Cluster CPU usage|ERROR.*cluster CPU" | tail -1 | awk '{print $NF}' | tr -d '%')
+        TRIGGERIQ_CPU=$(echo "$OUTPUT" | grep -E "triggeriq CPU|ERROR.*triggeriq CPU" | tail -1 | awk '{print $3}')
+        NODE_COUNT=$(echo "$OUTPUT" | grep -E "Cluster node count|ERROR.*node count" | tail -1 | awk '{print $4}')
+        HTTP_RATE=$(echo "$OUTPUT" | grep -E "triggeriq HTTP rate|ERROR.*HTTP rate" | tail -1 | awk '{print $4}')
+        echo "cpu=${CPU:-unknown}" >> $GITHUB_OUTPUT
+        echo "triggeriq_cpu=${TRIGGERIQ_CPU:-unknown}" >> $GITHUB_OUTPUT
+        echo "node_count=${NODE_COUNT:-unknown}" >> $GITHUB_OUTPUT
+        echo "http_rate=${HTTP_RATE:-unknown}" >> $GITHUB_OUTPUT
     - name: Notify Slack
       uses: slackapi/slack-github-action@v1.24
       with:
-        slack-bot-token: ${{ secrets.SLACK_TOKEN }}
+        bot-token: ${{ secrets.SLACK_TOKEN }}
         channel-id: D09GZCRDRNE
-        text: |
+        slack-message: |
           Daily Cost Check for $CLUSTER_NAME:
           Cluster CPU: ${{ steps.check-metrics.outputs.cpu }}
           triggeriq CPU: ${{ steps.check-metrics.outputs.triggeriq_cpu }}
-          ingress-nginx Watchers: ${{ steps.check-metrics.outputs.watchers }}
+          Node Count: ${{ steps.check-metrics.outputs.node_count }}
           triggeriq HTTP Rate: ${{ steps.check-metrics.outputs.http_rate }}
