@@ -32,7 +32,7 @@ jobs:
     - name: Notify Slack
       uses: slackapi/slack-github-action@v1.24
       with:
-        bot-token: ${{ secrets.SLACK_TOKEN }}
+        slack-bot-token: ${{ secrets.SLACK_TOKEN }}
         channel-id: D09GZCRDRNE
         slack-message: |
           Daily Cost Check for $CLUSTER_NAME:
